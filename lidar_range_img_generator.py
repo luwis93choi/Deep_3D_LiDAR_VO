@@ -105,5 +105,8 @@ class range_img_generator():
             # Resize the output range image into corrected resolution
             corrected_range_img = cv.resize(range_img, dsize=(max_width_steps, max_height_steps), interpolation=cv.INTER_CUBIC)
             
+            # Add channel dimension in order to support 2D CNN layer's dimension requirements
+            corrected_range_img = np.expand_dims(corrected_range_img, axis=0)
+
             return corrected_range_img
 
