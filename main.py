@@ -20,6 +20,17 @@ from sequential_sensor_dataset import sequential_sensor_dataset
 
 from CNN_RNN import CNN_RNN
 
+# Argument parser boolean processing (https://eehoeskrap.tistory.com/521)
+def str2bool(value):
+    if isinstance(value, bool):
+        return value
+    if value.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif value.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected')
+
 ap = argparse.ArgumentParser()
 
 ap.add_argument('-l', '--input_lidar_file_path', type=str, required=True)
@@ -31,7 +42,7 @@ ap.add_argument('-c', '--cuda_num', type=str, required=True)
 ap.add_argument('-e', '--training_epoch', type=int, required=False, default=100)
 ap.add_argument('-b', '--batch_size', type=int, required=False, default=16)
 ap.add_argument('-s', '--sequence_length', type=int, required=False, default=5)
-ap.add_argument('-d', '--data_display', type=str, required=False, default=False)
+ap.add_argument('-d', '--data_display', type=str2bool, required=False, default=False)
 
 ap.add_argument('-m', '--execution_mode', type=str, required=True, default='training')
 ap.add_argument('-t', '--pre_trained_network_path', type=str, required=True)
@@ -82,8 +93,9 @@ if mode == 'training':
     CRNN_VO_model = CNN_RNN(device=device, hidden_size=500, learning_rate=0.001)
     CRNN_VO_model.train()
 
-    training_writer = SummaryWriter(log_dir='./runs/' + start_time + '/CRNN_VO_training', flush_secs=1)
-    validation_writer = SummaryWriter(log_dir='./runs/' + start_time + '/CRNN_VO_validation', flush_secs=1)
+    # Tensorboard run command : tensorboard --logdir=./runs
+    training_writer = SummaryWriter(log_dir='./runs/' + start_time + '/CRNN_LIDAR_VO_training', flush_secs=1)
+    validation_writer = SummaryWriter(log_dir='./runs/' + start_time + '/CRNN_LIDAR_VO_validation', flush_secs=1)
 
     plot_step_training = 0
     plot_step_validation = 0
@@ -102,22 +114,22 @@ if mode == 'training':
                 print('Creating save directory')
                 os.mkdir('./' + start_time)
 
-        for batch_idx, (current_img_tensor, pose_6DOF_tensor) in enumerate(dataloader):
+        for batch_idx, (lidar_range_img_stack_tensor, pose_6DOF_tensor) in enumerate(dataloader):
 
-            if (current_img_tensor != None) and (pose_6DOF_tensor != None):
+            if (lidar_range_img_stack_tensor != None) and (pose_6DOF_tensor != None):
 
-                current_img_tensor = current_img_tensor.to(device).float()
+                lidar_range_img_stack_tensor = lidar_range_img_stack_tensor.to(device).float()
                 pose_6DOF_tensor = pose_6DOF_tensor.to(device).float()
 
                 # Data Dimension Standard : Batch Size x Sequence Length x Data Shape
-                # Sequential Image = Batch Size x Sequence Length x 3 (Channel) x 376 (Height) x 1241 (Width)
+                # Sequential LiDAR Image = Batch Size x Sequence Length x 3 (Channel) x Height x Width
                 # Sequential Pose = Batch Size x Sequence Length x 6 (6 DOF)
 
                 # print('---------------------------------')
-                # print(current_img_tensor.size())
+                # print(lidar_range_img_stack_tensor.size())
                 # print(pose_6DOF_tensor.size())
 
-                pose_est_output = CRNN_VO_model(current_img_tensor)
+                pose_est_output = CRNN_VO_model(lidar_range_img_stack_tensor)
 
                 translation_rotation_relative_weight = 100
 
@@ -133,26 +145,26 @@ if mode == 'training':
                 if DATA_DISPLAY_ON is True:
 
                     ### Sequential Image Stack Display ###
-                    disp_current_img_tensor = current_img_tensor.clone().detach().cpu()
+                    disp_current_img_tensor = lidar_range_img_stack_tensor.clone().detach().cpu()
 
-                    img_sequence_list = []
-                    total_img = []
+                    lidar_img_sequence_list = []
+                    lidar_total_img = []
                     seq_len = dataloader.dataset.sequence_length
                     for batch_index in range(disp_current_img_tensor.size(0)):
 
                         for seq in range(dataloader.dataset.sequence_length):
-                            current_img = np.array(TF.to_pil_image(disp_current_img_tensor[batch_index][seq]))
-                            current_img = cv.cvtColor(current_img, cv.COLOR_RGB2BGR)    # Re-Order the image array into BGR for display purpose
-                            current_img = cv.resize(current_img, dsize=(int(1280/seq_len), int(240/(seq_len * 0.5))), interpolation=cv.INTER_CUBIC)
+                            lidar_range_img = np.array(TF.to_pil_image(disp_current_img_tensor[batch_index][seq]))
+                            lidar_range_img = cv.resize(lidar_range_img, dsize=(int(1280/seq_len), int(240/(seq_len * 0.5))), interpolation=cv.INTER_CUBIC)
+                            lidar_range_img = cv.applyColorMap(lidar_range_img, cv.COLORMAP_HSV)
 
-                            img_sequence_list.append(current_img)
+                            lidar_img_sequence_list.append(lidar_range_img)
 
-                        total_img.append(cv.hconcat(img_sequence_list))
-                        img_sequence_list = []
+                        lidar_total_img.append(cv.hconcat(lidar_img_sequence_list))
+                        lidar_img_sequence_list = []
                     
-                    final_img_output = cv.vconcat(total_img)
+                    final_lidar_img_output = cv.vconcat(lidar_total_img)
 
-                    cv.imshow('Image Sequence Stack', final_img_output)
+                    cv.imshow('Image Sequence Stack', final_lidar_img_output)
                     cv.waitKey(1)
 
         ### Validation ###############################################################
@@ -162,22 +174,22 @@ if mode == 'training':
 
         with torch.no_grad():
 
-            for batch_idx, (current_img_tensor, pose_6DOF_tensor) in enumerate(dataloader):
+            for batch_idx, (lidar_range_img_stack_tensor, pose_6DOF_tensor) in enumerate(dataloader):
 
-                if (current_img_tensor != None) and (pose_6DOF_tensor != None):
+                if (lidar_range_img_stack_tensor != None) and (pose_6DOF_tensor != None):
 
-                    current_img_tensor = current_img_tensor.to(device).float()
+                    lidar_range_img_stack_tensor = lidar_range_img_stack_tensor.to(device).float()
                     pose_6DOF_tensor = pose_6DOF_tensor.to(device).float()
 
                     # Data Dimension Standard : Batch Size x Sequence Length x Data Shape
-                    # Sequential Image = Batch Size x Sequence Length x 3 (Channel) x 376 (Height) x 1241 (Width)
+                    # Sequential Image = Batch Size x Sequence Length x 3 (Channel) x Height x Width
                     # Sequential Pose = Batch Size x Sequence Length x 6 (6 DOF)
 
                     # print('---------------------------------')
-                    # print(current_img_tensor.size())
+                    # print(lidar_range_img_stack_tensor.size())
                     # print(pose_6DOF_tensor.size())
 
-                    pose_est_output = CRNN_VO_model(current_img_tensor)
+                    pose_est_output = CRNN_VO_model(lidar_range_img_stack_tensor)
 
                     translation_rotation_relative_weight = 100
 
@@ -214,22 +226,22 @@ elif mode == 'test':
 
     with torch.no_grad():
 
-        for batch_idx, (current_img_tensor, pose_6DOF_tensor) in enumerate(dataloader):
+        for batch_idx, (lidar_range_img_stack_tensor, pose_6DOF_tensor) in enumerate(dataloader):
 
-            if (current_img_tensor != None) and (pose_6DOF_tensor != None):
+            if (lidar_range_img_stack_tensor != None) and (pose_6DOF_tensor != None):
 
-                current_img_tensor = current_img_tensor.to(device).float()
+                lidar_range_img_stack_tensor = lidar_range_img_stack_tensor.to(device).float()
                 pose_6DOF_tensor = pose_6DOF_tensor.to(device).float()
 
                 # Data Dimension Standard : Batch Size x Sequence Length x Data Shape
-                # Sequential Image = Batch Size x Sequence Length x 3 (Channel) x 376 (Height) x 1241 (Width)
+                # Sequential Image = Batch Size x Sequence Length x 3 (Channel) x Height x Width
                 # Sequential Pose = Batch Size x Sequence Length x 6 (6 DOF)
 
                 # print('---------------------------------')
-                # print(current_img_tensor.size())
+                # print(lidar_range_img_stack_tensor.size())
                 # print(pose_6DOF_tensor.size())
 
-                pose_est_output = CRNN_VO_model(current_img_tensor)
+                pose_est_output = CRNN_VO_model(lidar_range_img_stack_tensor)
 
                 translation_rotation_relative_weight = 100
 
