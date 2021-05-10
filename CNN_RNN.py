@@ -16,7 +16,7 @@ class CNN_RNN(nn.Module):
         ### Deep Neural Network Setup ###
         self.CNN = nn.Sequential(
 
-            nn.Conv2d(in_channels=3, out_channels=64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False),
+            nn.Conv2d(in_channels=1, out_channels=64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False),
             nn.BatchNorm2d(64),
             nn.LeakyReLU(0.1),
 
@@ -59,10 +59,10 @@ class CNN_RNN(nn.Module):
         self.rnn_type = rnn_type
 
         if rnn_type == 'rnn':
-            self.RNN = nn.RNN(input_size=30720, hidden_size=hidden_size, num_layers=num_layers, batch_first=True)
+            self.RNN = nn.RNN(input_size=59392, hidden_size=hidden_size, num_layers=num_layers, batch_first=True)
 
         elif rnn_type == 'lstm':
-            self.RNN = nn.LSTM(input_size=30720, hidden_size=hidden_size, num_layers=num_layers, batch_first=True)
+            self.RNN = nn.LSTM(input_size=59392, hidden_size=hidden_size, num_layers=num_layers, batch_first=True)
 
         self.linear = nn.Linear(in_features=hidden_size, out_features=6)
 
