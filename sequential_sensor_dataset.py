@@ -11,6 +11,8 @@ from torchvision import transforms
 import PIL
 from PIL import Image
 
+from lidar_range_img_generator import range_img_generator
+
 class dataset_dict_generator():
 
     def __init__(self, lidar_dataset_path='', img_dataset_path='', pose_dataset_path='',
@@ -19,7 +21,6 @@ class dataset_dict_generator():
         self.lidar_dataset_path = lidar_dataset_path
         self.img_dataset_path = img_dataset_path
         self.pose_dataset_path = pose_dataset_path
-
 
         dataset_sequence_list = np.array([train_sequence, valid_sequence, test_sequence], dtype=np.object)
         
@@ -50,11 +51,14 @@ class dataset_dict_generator():
 
             self.dataset_writer = csv.writer(self.dataset_dict)
 
-            header_list = ['current_index', 'Sequence_index', 'current_img_path', 'current_x [m]', 'current_y [m]', 'current_z [m]', 'current_roll [rad]', 'current_pitch [rad]', 'current_yaw [rad]']
+            header_list = ['current_index', 'Sequence_index', 'current_lidar_path', 'current_img_path', 'current_x [m]', 'current_y [m]', 'current_z [m]', 'current_roll [rad]', 'current_pitch [rad]', 'current_yaw [rad]']
             self.dataset_writer.writerow(header_list)
 
             for sequence_idx in np.array(dataset_type):
                 
+                lidar_base_path = self.lidar_dataset_path + '/' + sequence_idx + '/velodyne'
+                lidar_data_name = sorted(os.listdir(lidar_base_path))
+
                 img_base_path = self.img_dataset_path + '/' + sequence_idx + '/image_2'
                 img_data_name = sorted(os.listdir(img_base_path))
 
@@ -67,7 +71,7 @@ class dataset_dict_generator():
                     if not line: break
                 pose_file.close()
 
-                for img_name, line in zip(np.array(img_data_name), np.array(lines)):
+                for lidar_name, img_name, line in zip(np.array(lidar_data_name), np.array(img_data_name), np.array(lines)):
                     
                     # Pose data re-organization into x, y, z, euler angles
                     pose_line = line
@@ -88,7 +92,7 @@ class dataset_dict_generator():
                     current_pitch = np.arctan2(-1 * current_pose_Rmat[2][0], np.sqrt(current_pose_Rmat[2][1]**2 + current_pose_Rmat[2][2]**2))
                     current_yaw = np.arctan2(current_pose_Rmat[1][0], current_pose_Rmat[0][0])
 
-                    data = [self.data_idx, sequence_idx, img_base_path + '/' + img_name, current_x, current_y, current_z, current_roll, current_pitch, current_yaw]
+                    data = [self.data_idx, sequence_idx, lidar_base_path + '/' + lidar_name, img_base_path + '/' + img_name, current_x, current_y, current_z, current_roll, current_pitch, current_yaw]
 
                     self.dataset_writer.writerow(data)
 
@@ -137,6 +141,8 @@ class sequential_sensor_dataset(torch.utils.data.Dataset):
         self.mode = mode
 
         self.sequence_length = sequence_length
+
+        self.lidar_range_img_generator = range_img_generator(h_fov=[-180, 180], h_res=0.2, v_fov=[-24.9, 2], v_res=0.4)
 
         self.dataset_dict_generator = dataset_dict_generator(lidar_dataset_path=lidar_dataset_path, 
                                                              img_dataset_path=img_dataset_path, 
@@ -195,33 +201,46 @@ class sequential_sensor_dataset(torch.utils.data.Dataset):
             seq_indices = np.array(item)[:, 1]
 
             if(len(np.unique(seq_indices)) == 1):
-
-                ### Sequential Image Stacking ###
+        
+                ### Sequential LiDAR Range Image Stacking ###
                 for idx in range(self.sequence_length):
 
-                    if self.mode == 'training':
-                        current_img = self.train_transform(Image.open(item[idx][2]))
+                    lidar_range_img = self.lidar_range_img_generator.convert_range_img(pcd_path=item[idx][2], output_type='depth')
+                    lidar_range_img = np.expand_dims(lidar_range_img, axis=0)   # Add Sequence Length Dimension
 
-                    elif self.mode == 'validation':
-                        current_img = self.valid_transform(Image.open(item[idx][2]))
-
-                    elif self.mode == 'test':
-                        current_img = self.test_transform(Image.open(item[idx][2]))
-
-                    current_img = np.expand_dims(current_img, axis=0)       # Add Sequence Length Dimension
-                    # current_img = np.transpose(current_img, (0, 3, 1, 2))   # Re-Order the array into Channel-First Array
-                    
                     if idx == 0:
-                        img_stack = current_img
+                        lidar_range_img_stack = lidar_range_img
                     else:
-                        img_stack = np.vstack((img_stack, current_img))     # Stack the sequence of Camera Images
+                        lidar_range_img_stack = np.vstack((lidar_range_img_stack, lidar_range_img))     # Stack the sequence of LiDAR Range Images
+
+                lidar_range_img_stack = torch.from_numpy(lidar_range_img_stack)
+        
+                ### Sequential Image Stacking ###
+                # for idx in range(self.sequence_length):
+
+                #     if self.mode == 'training':
+                #         current_img = self.train_transform(Image.open(item[idx][3]))
+
+                #     elif self.mode == 'validation':
+                #         current_img = self.valid_transform(Image.open(item[idx][3]))
+
+                #     elif self.mode == 'test':
+                #         current_img = self.test_transform(Image.open(item[idx][3]))
+
+                #     current_img = np.expand_dims(current_img, axis=0)       # Add Sequence Length Dimension
+                #     # current_img = np.transpose(current_img, (0, 3, 1, 2))   # Re-Order the array into Channel-First Array
+                    
+                #     if idx == 0:
+                #         img_stack = current_img
+                #     else:
+                #         img_stack = np.vstack((img_stack, current_img))     # Stack the sequence of Camera Images
                 
-                img_stack = torch.from_numpy(img_stack)
+                # img_stack = torch.from_numpy(img_stack)
 
                 ### Sequential Pose Data Stacking ###
                 for idx in range(self.sequence_length):
 
-                    pose_6DOF = [float(i) for i in item[idx][3:]]
+                    pose_6DOF = [float(i) for i in item[idx][4:]]
                     pose_6DOF = np.expand_dims(pose_6DOF, axis=0)   # Add Sequence Length Dimension
                     
                     if idx == 0:
@@ -231,7 +250,7 @@ class sequential_sensor_dataset(torch.utils.data.Dataset):
 
                 pose_stack = torch.from_numpy(pose_stack)
 
-                return img_stack, pose_stack
+                return lidar_range_img_stack, pose_stack
 
             else:
 
