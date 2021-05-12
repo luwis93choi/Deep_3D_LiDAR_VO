@@ -19,26 +19,12 @@ class range_img_generator():
         self.min_range = lidar_min_range
         self.max_range = lidar_max_range
 
-    def convert_bin_to_pcd(self, bin_path=None):
+    # Directly reading PCD binary file using numpy (Reference : KITTI Tutorial (https://github.com/windowsub0406/KITTI_Tutorial/blob/master/Convert_Velo_2_Pano_detail.ipynb))
+    def pcd_from_bin(self, bin_path):
 
-        size_float = 4
-        list_pcd = []
-        list_intensity = []
+        obj = np.fromfile(bin_path, dtype=np.float32).reshape(-1, 4)
 
-        with open(bin_path, 'rb') as f:
-
-            byte = f.read(size_float * 4)   # Read the bytes for first 4 float values (x, y, z, intensity)
-
-            while byte:
-                x, y, z, intensity = struct.unpack('ffff', byte)    # Convert the bytes into actual float values
-                list_pcd.append([x, y, z])                          # Accumulate Point Cloud Data into list
-                byte = f.read(size_float * 4)                       # Read the bytes for next 4 float values
-
-        np_pcd = np.asarray(list_pcd)
-        pcd = o3d.geometry.PointCloud()
-        pcd.points = o3d.utility.Vector3dVector(np_pcd)
-
-        return pcd
+        return obj[:, :3]
 
     def convert_range_img(self, pcd_path=None, output_type='img_pixel'):
 
@@ -57,7 +43,8 @@ class range_img_generator():
 
         else:
 
-            pcd = self.convert_bin_to_pcd(bin_path=pcd_path)
+            # pcd = self.convert_bin_to_pcd(bin_path=pcd_path)
+            pcd = self.pcd_from_bin(bin_path=pcd_path)
 
             # Resolution for final range image output
             max_width_steps = int(np.ceil((self.h_fov[1] - self.h_fov[0]) / self.h_res))
@@ -66,9 +53,9 @@ class range_img_generator():
             h_res_in_radian = self.h_res * (np.pi / 180)    # Horizontal Angular Resolution in Radian
             v_res_in_radian = self.v_res * (np.pi / 180)    # Vertical Angular Resolution in Radian
 
-            pcd_x = np.asarray(pcd.points)[:, 0]
-            pcd_y = np.asarray(pcd.points)[:, 1]
-            pcd_z = np.asarray(pcd.points)[:, 2]
+            pcd_x = pcd[:, 0]
+            pcd_y = pcd[:, 1]
+            pcd_z = pcd[:, 2]
 
             pcd_dist_unnormalized = np.sqrt(np.power(pcd_x, 2) + np.power(pcd_y, 2) + np.power(pcd_z, 2))
             pcd_dist_normalized = (pcd_dist_unnormalized - self.min_range) / (self.max_range - self.min_range)
@@ -98,15 +85,21 @@ class range_img_generator():
             if output_type == 'img_pixel':
                 range_img[y_in_range_img, x_in_range_img] = 255 * pcd_dist_normalized
 
+                # Resize the output range image into corrected resolution
+                corrected_range_img = cv.resize(range_img, dsize=(320, 200), interpolation=cv.INTER_CUBIC)
+
+                # Add channel dimension in order to support 2D CNN layer's dimension requirements
+                corrected_range_img = np.expand_dims(corrected_range_img, axis=0)
+
             # Compose range image as 2D array with LiDAR scanning range value between minimum and maximum scanning distance
             elif output_type == 'depth':
                 range_img[y_in_range_img, x_in_range_img] = pcd_dist_unnormalized
-            
-            # Resize the output range image into corrected resolution
-            corrected_range_img = cv.resize(range_img, dsize=(max_width_steps, max_height_steps), interpolation=cv.INTER_CUBIC)
-            
-            # Add channel dimension in order to support 2D CNN layer's dimension requirements
-            corrected_range_img = np.expand_dims(corrected_range_img, axis=0)
+                
+                # Resize the output range image into corrected resolution
+                corrected_range_img = cv.resize(range_img, dsize=(max_width_steps, max_height_steps), interpolation=cv.INTER_CUBIC)
+                
+                # Add channel dimension in order to support 2D CNN layer's dimension requirements
+                corrected_range_img = np.expand_dims(corrected_range_img, axis=0)
 
             return corrected_range_img
 
