@@ -205,7 +205,7 @@ class sequential_sensor_dataset(torch.utils.data.Dataset):
                 ### Sequential LiDAR Range Image Stacking ###
                 for idx in range(self.sequence_length):
 
-                    lidar_range_img = self.lidar_range_img_generator.convert_range_img(pcd_path=item[idx][2], output_type='depth')
+                    lidar_range_img = self.lidar_range_img_generator.convert_range_img(pcd_path=item[idx][2], output_type='img_pixel')
                     lidar_range_img = np.expand_dims(lidar_range_img, axis=0)   # Add Sequence Length Dimension
 
                     if idx == 0:
