@@ -20,6 +20,8 @@ from sequential_sensor_dataset import sequential_sensor_dataset
 
 from CNN_RNN import CNN_RNN
 
+os.environ['KMP_WARNINGS'] = 'off'
+
 # Argument parser boolean processing (https://eehoeskrap.tistory.com/521)
 def str2bool(value):
     if isinstance(value, bool):
@@ -83,7 +85,7 @@ start_time = str(datetime.datetime.now())
 
 if mode == 'training':
 
-    dataloader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, num_workers=4, drop_last=True, collate_fn=dataset.collate_fn)
+    dataloader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, num_workers=8, drop_last=True, collate_fn=dataset.collate_fn)
 
     print('Mode : Training')
     print('Training Epoch : ' + str(EPOCH))
@@ -94,12 +96,20 @@ if mode == 'training':
     CRNN_VO_model.train()
 
     # Tensorboard run command : tensorboard --logdir=./runs
-    training_writer = SummaryWriter(log_dir='./runs/' + start_time + '/CRNN_LIDAR_VO_training', flush_secs=1)
-    validation_writer = SummaryWriter(log_dir='./runs/' + start_time + '/CRNN_LIDAR_VO_validation', flush_secs=1)
+    training_writer = SummaryWriter(log_dir='./runs/' + start_time + '/CRNN_LIDAR_VO_training')
+    validation_writer = SummaryWriter(log_dir='./runs/' + start_time + '/CRNN_LIDAR_VO_validation')
 
     plot_step_training = 0
     plot_step_validation = 0
 
+    # with torch.profiler.profile(
+
+    #     schedule=torch.profiler.schedule(wait=1, warmup=1, active=5),
+    #     on_trace_ready=torch.profiler.tensorboard_trace_handler('./runs/' + start_time + '/CRNN_VO_profile'),
+    #     record_shapes=True
+
+    # ) as torch_profiler:
+    
     for epoch in range(EPOCH):
 
         print('[EPOCH : {}]'.format(str(epoch)))
@@ -115,6 +125,8 @@ if mode == 'training':
                 os.mkdir('./' + start_time)
 
         for batch_idx, (lidar_range_img_stack_tensor, pose_6DOF_tensor) in enumerate(dataloader):
+
+            print('Current State [Training] - [EPOCH : {}][Batch Idx : {}]'.format(str(epoch), str(batch_idx)))
 
             if (lidar_range_img_stack_tensor != None) and (pose_6DOF_tensor != None):
 
@@ -138,10 +150,10 @@ if mode == 'training':
                             + translation_rotation_relative_weight * CRNN_VO_model.rotation_loss(pose_est_output[:, 3:], pose_6DOF_tensor[:, -1, 3:])
                 train_loss.backward()
                 CRNN_VO_model.optimizer.step()
-
+                
                 training_writer.add_scalar('Immediate Loss (Translation + Rotation)', train_loss.item(), plot_step_training)
                 plot_step_training += 1
-
+                
                 if DATA_DISPLAY_ON is True:
 
                     ### Sequential Image Stack Display ###
@@ -176,6 +188,8 @@ if mode == 'training':
 
             for batch_idx, (lidar_range_img_stack_tensor, pose_6DOF_tensor) in enumerate(dataloader):
 
+                print('Current State [Validation] - [EPOCH : {}][Batch Idx : {}]'.format(str(epoch), str(batch_idx)))
+
                 if (lidar_range_img_stack_tensor != None) and (pose_6DOF_tensor != None):
 
                     lidar_range_img_stack_tensor = lidar_range_img_stack_tensor.to(device).float()
@@ -198,6 +212,8 @@ if mode == 'training':
 
                     validation_writer.add_scalar('Immediate Loss (Translation + Rotation)', train_loss.item(), plot_step_validation)
                     plot_step_validation += 1
+
+        # torch_profiler.step()
 
         torch.save({
             'epoch' : EPOCH,
