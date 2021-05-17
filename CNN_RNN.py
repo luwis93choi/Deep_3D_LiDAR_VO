@@ -59,21 +59,21 @@ class CNN_RNN(nn.Module):
         self.rnn_type = rnn_type
 
         if rnn_type == 'rnn':
-            self.RNN = nn.RNN(input_size=20480, hidden_size=hidden_size, num_layers=num_layers, batch_first=True)
+            self.RNN = nn.RNN(input_size=20480, hidden_size=hidden_size, num_layers=num_layers, batch_first=True, dropout=0.5)
 
         elif rnn_type == 'lstm':
-            self.RNN = nn.LSTM(input_size=20480, hidden_size=hidden_size, num_layers=num_layers, batch_first=True)
+            self.RNN = nn.LSTM(input_size=20480, hidden_size=hidden_size, num_layers=num_layers, batch_first=True, dropout=0.5)
 
         self.linear = nn.Linear(in_features=hidden_size, out_features=6)
 
         ### Training Setup ###
-        self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
+        self.device = device
+        self.to(self.device)
+
+        self.optimizer = optim.Adagrad(self.parameters(), lr=learning_rate)
 
         self.translation_loss = nn.MSELoss()
         self.rotation_loss = nn.MSELoss()
-
-        self.device = device
-        self.to(self.device)
 
     def forward(self, x):
 
