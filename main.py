@@ -92,7 +92,7 @@ if mode == 'training':
     print('Batch Size : ' + str(batch_size))
     print('Sequence Length : ' + str(sequence_length))
 
-    CRNN_VO_model = CNN_RNN(device=device, hidden_size=500, learning_rate=0.001)
+    CRNN_VO_model = CNN_RNN(device=device, hidden_size=1000, learning_rate=0.001)
     CRNN_VO_model.train()
 
     # Tensorboard run command : tensorboard --logdir=./runs
@@ -124,7 +124,7 @@ if mode == 'training':
                 print('Creating save directory')
                 os.mkdir('./' + start_time)
 
-        for batch_idx, (lidar_range_img_stack_tensor, pose_6DOF_tensor) in enumerate(dataloader):
+        for batch_idx, (current_seq, lidar_range_img_stack_tensor, pose_6DOF_tensor) in enumerate(dataloader):
 
             print('Current State [Training] - [EPOCH : {}][Batch Idx : {}]'.format(str(epoch), str(batch_idx)))
 
@@ -146,8 +146,8 @@ if mode == 'training':
                 translation_rotation_relative_weight = 100
 
                 CRNN_VO_model.optimizer.zero_grad()
-                train_loss = CRNN_VO_model.translation_loss(pose_est_output[:, :3], pose_6DOF_tensor[:, -1, :3]) \
-                            + translation_rotation_relative_weight * CRNN_VO_model.rotation_loss(pose_est_output[:, 3:], pose_6DOF_tensor[:, -1, 3:])
+                train_loss = CRNN_VO_model.translation_loss(pose_est_output[:, :3], pose_6DOF_tensor[:, :3]) \
+                            + translation_rotation_relative_weight * CRNN_VO_model.rotation_loss(pose_est_output[:, 3:], pose_6DOF_tensor[:, 3:])
                 train_loss.backward()
                 CRNN_VO_model.optimizer.step()
                 
@@ -186,7 +186,7 @@ if mode == 'training':
 
         with torch.no_grad():
 
-            for batch_idx, (lidar_range_img_stack_tensor, pose_6DOF_tensor) in enumerate(dataloader):
+            for batch_idx, (current_seq, lidar_range_img_stack_tensor, pose_6DOF_tensor) in enumerate(dataloader):
 
                 print('Current State [Validation] - [EPOCH : {}][Batch Idx : {}]'.format(str(epoch), str(batch_idx)))
 
@@ -207,8 +207,8 @@ if mode == 'training':
 
                     translation_rotation_relative_weight = 100
 
-                    train_loss = CRNN_VO_model.translation_loss(pose_est_output[:, :3], pose_6DOF_tensor[:, -1, :3]) \
-                                + translation_rotation_relative_weight * CRNN_VO_model.rotation_loss(pose_est_output[:, 3:], pose_6DOF_tensor[:, -1, 3:])
+                    train_loss = CRNN_VO_model.translation_loss(pose_est_output[:, :3], pose_6DOF_tensor[:, :3]) \
+                                + translation_rotation_relative_weight * CRNN_VO_model.rotation_loss(pose_est_output[:, 3:], pose_6DOF_tensor[:, 3:])
 
                     validation_writer.add_scalar('Immediate Loss (Translation + Rotation) | Batch Size : {} | Sequence Length : {}'.format(batch_size, sequence_length), train_loss.item(), plot_step_validation)
                     plot_step_validation += 1
@@ -230,7 +230,7 @@ elif mode == 'test':
     print('Batch Size : ' + str(1))
     print('Sequence Length : ' + str(sequence_length))
 
-    CRNN_VO_model = CNN_RNN(device=device, hidden_size=500, learning_rate=0.001)
+    CRNN_VO_model = CNN_RNN(device=device, hidden_size=1000, learning_rate=0.001)
     CRNN_VO_model.load_state_dict(torch.load(args['pre_trained_network_path'], map_location='cuda:' + args['cuda_num'])['CRNN_VO_model'])
     CRNN_VO_model.eval()
 
@@ -242,7 +242,7 @@ elif mode == 'test':
 
     with torch.no_grad():
 
-        for batch_idx, (lidar_range_img_stack_tensor, pose_6DOF_tensor) in enumerate(dataloader):
+        for batch_idx, (current_seq, lidar_range_img_stack_tensor, pose_6DOF_tensor) in enumerate(dataloader):
 
             if (lidar_range_img_stack_tensor != None) and (pose_6DOF_tensor != None):
 
@@ -261,8 +261,8 @@ elif mode == 'test':
 
                 translation_rotation_relative_weight = 100
 
-                train_loss = CRNN_VO_model.translation_loss(pose_est_output[:, :3], pose_6DOF_tensor[:, -1, :3]) \
-                            + translation_rotation_relative_weight * CRNN_VO_model.rotation_loss(pose_est_output[:, 3:], pose_6DOF_tensor[:, -1, 3:])
+                train_loss = CRNN_VO_model.translation_loss(pose_est_output[:, :3], pose_6DOF_tensor[:, :3]) \
+                            + translation_rotation_relative_weight * CRNN_VO_model.rotation_loss(pose_est_output[:, 3:], pose_6DOF_tensor[:, 3:])
 
                 test_writer.add_scalar('Immediate Loss (Translation + Rotation)', train_loss.item(), plot_step_test)
                 plot_step_test += 1
